@@ -6,12 +6,13 @@ if (!admin.apps.length) {
   
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    // storageBucket: ''
+    databaseURL: "https://raynott-98db5-default-rtdb.firebaseio.com"
   });
 }
 
 // These can be used anywhere in your app
-const db = admin.firestore();
+const db = admin.database();
+// const db = admin.firestore();
 // const bucket = admin.storage().bucket();
 
 module.exports = { admin, db };

@@ -17,6 +17,7 @@ const BookDemoController = require('../Controllers/BookaDemoController');
 
 
 router.post('/login', AuthController.loginAdmin);
+router.post('/register', AuthController.registerAdmin);
 
 router.get('/admin/dashboard', verifyAdmin, (req, res) => {
   res.json({ 
