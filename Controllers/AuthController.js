@@ -64,6 +64,28 @@ class AuthController {
       res.status(400).json({ success: false, error: result.error });
     }
   }
+  // Add to AuthController.js
+static async getUserData(req, res) {
+  try {
+    const uid = req.user.uid; // From your auth middleware
+    
+    const result = await AuthModel.getInstitutionDetails(uid);
+    
+    if (result.success) {
+      res.json({ 
+        success: true, 
+        institutionType: result.data.institutionType,
+        institutionName: result.data.institutionName,
+        email: result.data.email,
+        uid: uid
+      });
+    } else {
+      res.status(404).json({ success: false, error: "User data not found" });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
 }
 
 module.exports = AuthController;

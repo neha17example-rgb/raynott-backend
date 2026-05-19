@@ -23,25 +23,41 @@ class AuthModel {
   }
 
   static async adminLogin(email, password) {
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      console.log("Firebase auth success!");
-      
-      const token = await userCredential.user.getIdToken();
-      const isAdmin = await this.isAdmin(userCredential.user.uid);
-      
-      if (!isAdmin) {
-        console.log("❌ User is not an admin");
-        await auth.signOut();
-        return { success: false, error: "Not an admin user" };
-      }
-      
-      return { success: true, token };
-    } catch (error) {
-      console.error("🔥 Firebase Error:", error.message);
-      return { success: false, error: error.message };
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    console.log("Firebase auth success!");
+    
+    const user = userCredential.user;
+    
+    // Get the user's custom claims
+    const idTokenResult = await user.getIdTokenResult();
+    const claims = idTokenResult.claims;
+    
+    // Make sure claims are properly set
+    if (!claims.admin) {
+      console.log("❌ User is not an admin");
+      await auth.signOut();
+      return { success: false, error: "Not an admin user" };
     }
+    
+    // Get institution details from database
+    const userRecord = await admin.auth().getUser(user.uid);
+    
+    return { 
+      success: true, 
+      token: await user.getIdToken(),
+      user: {
+        uid: user.uid,
+        email: user.email,
+        institutionType: userRecord.customClaims?.institutionType,
+        institutionName: userRecord.customClaims?.institutionName
+      }
+    };
+  } catch (error) {
+    console.error("🔥 Firebase Error:", error.message);
+    return { success: false, error: error.message };
   }
+}
 
   static async adminRegister(institutionData) {
     const { email, password, institutionName, institutionType } = institutionData;
