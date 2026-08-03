@@ -14,7 +14,18 @@ class AuthController {
     const result = await AuthModel.adminLogin(email, password);
     
     if (result.success) {
-      res.json({ success: true, token: result.token });
+      // Return user data along with token
+      res.json({ 
+        success: true, 
+        token: result.token,
+        user: {
+          uid: result.user.uid,
+          email: result.user.email,
+          role: result.user.role || 'institute',
+          institutionType: result.user.institutionType || 'N/A',
+          institutionName: result.user.institutionName || 'N/A'
+        }
+      });
     } else {
       res.status(401).json({ success: false, error: result.error });
     }
@@ -64,28 +75,29 @@ class AuthController {
       res.status(400).json({ success: false, error: result.error });
     }
   }
-  // Add to AuthController.js
-static async getUserData(req, res) {
-  try {
-    const uid = req.user.uid; // From your auth middleware
-    
-    const result = await AuthModel.getInstitutionDetails(uid);
-    
-    if (result.success) {
+
+  static async getUserData(req, res) {
+    try {
+      const uid = req.user.uid;
+      
+      // Get user from Firebase Auth
+      const admin = require('firebase-admin');
+      const userRecord = await admin.auth().getUser(uid);
+      const claims = userRecord.customClaims || {};
+      
       res.json({ 
         success: true, 
-        institutionType: result.data.institutionType,
-        institutionName: result.data.institutionName,
-        email: result.data.email,
+        role: claims.role || 'institute',
+        institutionType: claims.institutionType || 'N/A',
+        institutionName: claims.institutionName || 'N/A',
+        email: userRecord.email,
         uid: uid
       });
-    } else {
-      res.status(404).json({ success: false, error: "User data not found" });
+    } catch (error) {
+      console.error('Error getting user data:', error);
+      res.status(500).json({ success: false, error: error.message });
     }
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
   }
-}
 }
 
 module.exports = AuthController;

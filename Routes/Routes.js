@@ -1,25 +1,28 @@
+// Routes.js
 const express = require('express');
 const router = express.Router();
 const AuthController = require('../Controllers/AuthController');
-const verifyAdmin = require('../Middleware/authMiddleware'); 
+const { verifyAdmin, verifyAuth } = require('../Middleware/authMiddleware'); 
 const schoolController = require('../Controllers/SchoolController');
-const {upload }= require('../Middleware/uploadMiddleware');
-const CollegeController=require('../Controllers/CollegeController')
-const PUCollegeController = require('../Controllers/PuCollegeController')
-const TuitionCoachingController=require('../Controllers/TuitionCoachingController')
-const TeacherController=require('../Controllers/TeachersController')
+const { upload } = require('../Middleware/uploadMiddleware');
+const CollegeController = require('../Controllers/CollegeController');
+const PUCollegeController = require('../Controllers/PuCollegeController');
+const TuitionCoachingController = require('../Controllers/TuitionCoachingController');
+const TeacherController = require('../Controllers/TeachersController');
 const RegistrationController = require('../Controllers/RegistrationControleer');
 const AdminRegistrationController = require('../Controllers/AdminRegController');
-const BestSellersController= require('../Controllers/BestSellers');
+const BestSellersController = require('../Controllers/BestSellers');
 const BookDemoController = require('../Controllers/BookaDemoController');
 
+// 🔥 FIX: Import Firebase Database
+const { db } = require('../firebaseAdmin'); // Make sure this path is correct
 
-
-
+// Auth Routes
 router.post('/login', AuthController.loginAdmin);
 router.post('/register', AuthController.registerAdmin);
 router.get('/admin/user-data', verifyAdmin, AuthController.getUserData);
 
+// Admin Dashboard
 router.get('/admin/dashboard', verifyAdmin, (req, res) => {
   res.json({ 
     success: true, 
@@ -28,31 +31,41 @@ router.get('/admin/dashboard', verifyAdmin, (req, res) => {
   });
 });
 
-//schools
+// Institute Dashboard
+router.get('/dashboard', verifyAuth, (req, res) => {
+  res.json({ 
+    success: true, 
+    message: "Welcome to Institute Dashboard",
+    user: req.user 
+  });
+});
+
+// Schools Routes
 router.post('/admin/addschools', 
-upload.fields([
-  { name: 'schoolImage', maxCount: 1 },
-  { name: 'photos', maxCount: 6 }
-]), schoolController.addSchool);
+  upload.fields([
+    { name: 'schoolImage', maxCount: 1 },
+    { name: 'photos', maxCount: 6 }
+  ]), 
+  schoolController.addSchool
+);
 
-router.get('/admin/getschools' ,schoolController.getSchools);
+router.get('/admin/getschools', schoolController.getSchools);
 router.get('/admin/getschools/:id', schoolController.getSchool);
-
 router.put('/admin/updateschools/:id', 
-upload.fields([
-  { name: 'schoolImage', maxCount: 1 },
-  { name: 'photos', maxCount: 6 }
-]), schoolController.updateSchool);
-
+  upload.fields([
+    { name: 'schoolImage', maxCount: 1 },
+    { name: 'photos', maxCount: 6 }
+  ]), 
+  schoolController.updateSchool
+);
 router.delete('/admin/del-schools/:id', schoolController.deleteSchool);
-
-router.get('/getschools/filtered', schoolController.getSchoolsWithFilters); 
+router.get('/getschools/filtered', schoolController.getSchoolsWithFilters);
 router.post('/admin/schools/:schoolId/reviews', schoolController.addReview);
 router.get('/schools/:schoolId/reviews', schoolController.getReviews);
 router.put('/schools/:schoolId/reviews/:reviewId/like', schoolController.likeReview);
 router.put('/schools/:schoolId/reviews/:reviewId/dislike', schoolController.dislikeReview);
 
-//colleges
+// Colleges Routes
 router.post('/admin/addcolleges', 
   upload.fields([
     { name: 'collegeImage', maxCount: 1 },
@@ -63,7 +76,6 @@ router.post('/admin/addcolleges',
 
 router.get('/admin/getcolleges', CollegeController.getColleges);
 router.get('/admin/getcolleges/:id', CollegeController.getCollege);
-
 router.put('/admin/updatecolleges/:id', 
   upload.fields([
     { name: 'collegeImage', maxCount: 1 },
@@ -71,21 +83,18 @@ router.put('/admin/updatecolleges/:id',
   ]), 
   CollegeController.updateCollege
 );
-
 router.delete('/admin/del-colleges/:id', CollegeController.deleteCollege);
-router.get('/admin/college-types',CollegeController.getAllCollegeTypes);
+router.get('/admin/college-types', CollegeController.getAllCollegeTypes);
 router.post('/admin/college-types', CollegeController.createCollegeType);
-router.delete('/admin/college-types/:id',CollegeController.deleteCollegeType);
-
-router.get('/admin/search/colleges', CollegeController.searchColleges)
+router.delete('/admin/college-types/:id', CollegeController.deleteCollegeType);
+router.get('/admin/search/colleges', CollegeController.searchColleges);
 router.post('/admin/colleges/:collegeId/reviews', CollegeController.addReview);
 router.get('/colleges/:collegeId/reviews', CollegeController.getReviews);
 router.put('/colleges/:collegeId/reviews/:reviewId/like', CollegeController.likeReview);
 router.put('/colleges/:collegeId/reviews/:reviewId/dislike', CollegeController.dislikeReview);
 
-// PU Colleges 
+// PU Colleges Routes
 router.post('/admin/addpucolleges', 
-  
   upload.fields([
     { name: 'collegeImage', maxCount: 1 },
     { name: 'photos', maxCount: 6 }
@@ -95,30 +104,24 @@ router.post('/admin/addpucolleges',
 
 router.get('/admin/getpucolleges', PUCollegeController.getPUColleges);
 router.get('/admin/getpucolleges/:id', PUCollegeController.getPUCollege);
-
 router.put('/admin/updatepucolleges/:id', 
-  
   upload.fields([
     { name: 'collegeImage', maxCount: 1 },
     { name: 'photos', maxCount: 6 }
   ]), 
   PUCollegeController.updatePUCollege
 );
-
-router.delete('/admin/del-pucolleges/:id',  PUCollegeController.deletePUCollege);
-
+router.delete('/admin/del-pucolleges/:id', PUCollegeController.deletePUCollege);
 router.get('/admin/pucollege-types', PUCollegeController.getAllPUCollegeTypes);
 router.post('/admin/pucollege-types', PUCollegeController.createPUCollegeType);
-router.delete('/admin/pucollege-types/:id',  PUCollegeController.deletePUCollegeType);
-
+router.delete('/admin/pucollege-types/:id', PUCollegeController.deletePUCollegeType);
 router.get('/admin/search/pucolleges', PUCollegeController.searchPUColleges);
 router.post('/admin/pucolleges/:puCollegeId/reviews', PUCollegeController.addReview);
 router.get('/pucolleges/:puCollegeId/reviews', PUCollegeController.getReviews);
 router.put('/pucolleges/:puCollegeId/reviews/:reviewId/like', PUCollegeController.likeReview);
 router.put('/pucolleges/:puCollegeId/reviews/:reviewId/dislike', PUCollegeController.dislikeReview);
 
-
-// Tuition/Coaching Centers
+// Tuition/Coaching Centers Routes
 router.post('/admin/addtuitioncoaching', 
   upload.fields([
     { name: 'centerImage', maxCount: 1 },
@@ -129,7 +132,6 @@ router.post('/admin/addtuitioncoaching',
 
 router.get('/admin/gettuitioncoaching', TuitionCoachingController.getTuitionCoachings);
 router.get('/admin/gettuitioncoaching/:id', TuitionCoachingController.getTuitionCoaching);
-
 router.put('/admin/updatetuitioncoaching/:id', 
   upload.fields([
     { name: 'centerImage', maxCount: 1 },
@@ -137,7 +139,6 @@ router.put('/admin/updatetuitioncoaching/:id',
   ]), 
   TuitionCoachingController.updateTuitionCoaching
 );
-
 router.delete('/admin/del-tuitioncoaching/:id', TuitionCoachingController.deleteTuitionCoaching);
 router.get('/admin/coaching-types', TuitionCoachingController.getAllCoachingTypes);
 router.post('/admin/coaching-types', TuitionCoachingController.createCoachingType);
@@ -148,13 +149,13 @@ router.get('/tuitioncoaching/:tuitionCoachingId/reviews', TuitionCoachingControl
 router.put('/tuitioncoaching/:tuitionCoachingId/reviews/:reviewId/like', TuitionCoachingController.likeReview);
 router.put('/tuitioncoaching/:tuitionCoachingId/reviews/:reviewId/dislike', TuitionCoachingController.dislikeReview);
 
-//Teachers
+// Teachers Routes
 router.post('/admin/addteachers', upload.fields([
   { name: 'profileImage', maxCount: 1 }
 ]), TeacherController.addTeacher);
 
 router.get('/admin/teachers', TeacherController.getTeachers);
-router.get('/admin/professional-teachers', TeacherController.getProfessionalTeachers); 
+router.get('/admin/professional-teachers', TeacherController.getProfessionalTeachers);
 router.get('/admin/personal-mentors', TeacherController.getPersonalMentors);
 router.get('/admin/professional-teachers/:id', TeacherController.getProfessionalTeacherDetails);
 router.get('/admin/personal-mentors/:id', TeacherController.getPersonalMentorDetails);
@@ -163,7 +164,7 @@ router.get('/admin/get-teachers/:id', TeacherController.getTeacher);
 router.put('/admin/edit-teachers/:id', upload.fields([
   { name: 'profileImage', maxCount: 1 }
 ]), TeacherController.updateTeacher);
-router.delete('/admin/del-teachers/:id',TeacherController.deleteTeacher);
+router.delete('/admin/del-teachers/:id', TeacherController.deleteTeacher);
 router.get('/search/professional', TeacherController.searchProfessionalTeachersByName);
 router.get('/search/personal', TeacherController.searchPersonalMentorsByName);
 
@@ -176,6 +177,7 @@ router.put('/teachers/personal/:teacherId/reviews/:reviewId/like', TeacherContro
 router.put('/teachers/professional/:teacherId/reviews/:reviewId/dislike', TeacherController.dislikeProfessionalReview);
 router.put('/teachers/personal/:teacherId/reviews/:reviewId/dislike', TeacherController.dislikePersonalReview);
 
+// Registration Routes
 router.post('/submit', 
   upload.fields([
     { name: 'registrationCertificate', maxCount: 1 },
@@ -191,15 +193,74 @@ router.post('/submit',
 
 router.get('/status/:id', RegistrationController.getRegistrationStatus);
 
-router.get('/admin/pending',  AdminRegistrationController.getPendingRegistrations);
+// Admin Registration Routes
+router.get('/admin/pending', AdminRegistrationController.getPendingRegistrations);
 router.get('/admin/all', AdminRegistrationController.getAllRegistrations);
-router.get('/admin/registrations/:id', AdminRegistrationController.getRegistrationById); 
+router.get('/admin/registrations/:id', AdminRegistrationController.getRegistrationById);
 router.put('/admin/approve/:id', AdminRegistrationController.approveRegistration);
 router.put('/admin/reject/:id', AdminRegistrationController.rejectRegistration);
+router.post('/admin/fix-registration/:id',AdminRegistrationController.fixRegistration);
 
-router.get('/bestsellers', BestSellersController.getBestSellers)
+router.get('/registration/check', async (req, res) => {
+  try {
+    const { email } = req.query;
+    if (!email) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email is required' 
+      });
+    }
 
+    console.log('📡 Checking registration for email:', email);
+
+    // Query Firebase for registration with this email
+    const snapshot = await db.ref('registration_requests')
+      .orderByChild('email')
+      .equalTo(email)
+      .once('value');
+    
+    let registration = null;
+    snapshot.forEach((child) => {
+      registration = { 
+        id: child.key, 
+        ...child.val() 
+      };
+    });
+    
+    if (registration) {
+      console.log('✅ Found registration:', registration.id);
+      res.json({ 
+        success: true, 
+        data: {
+          id: registration.id,
+          institutionType: registration.institutionType,
+          status: registration.status,
+          submittedAt: registration.submittedAt,
+          approvedAt: registration.approvedAt,
+          rejectedAt: registration.rejectedAt,
+          rejectionReason: registration.rejectionReason,
+          ...registration
+        }
+      });
+    } else {
+      console.log('❌ No registration found for email:', email);
+      res.json({ 
+        success: false, 
+        message: 'No registration found for this email' 
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error checking registration:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Other Routes
+router.get('/bestsellers', BestSellersController.getBestSellers);
 router.post('/book-demo', BookDemoController.bookDemo);
-router.get('/book-demo',  BookDemoController.getBookings);
+router.get('/book-demo', BookDemoController.getBookings);
 
 module.exports = router;

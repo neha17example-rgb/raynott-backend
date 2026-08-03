@@ -1,7 +1,7 @@
 const admin = require('firebase-admin');
 const { auth } = require('../firebase');
 const { signInWithEmailAndPassword } = require('firebase/auth');
-const { db } = require('../firebaseAdmin'); // Import your existing db
+const { db } = require('../firebaseAdmin');
 
 class AuthModel {
   static async verifyToken(idToken) {
@@ -16,48 +16,49 @@ class AuthModel {
   static async isAdmin(uid) {
     try {
       const user = await admin.auth().getUser(uid);
-      return user.customClaims && user.customClaims.admin === true;
+      return user.customClaims && user.customClaims.role === 'admin';
     } catch (error) {
       return false;
     }
   }
 
   static async adminLogin(email, password) {
-  try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    console.log("Firebase auth success!");
-    
-    const user = userCredential.user;
-    
-    // Get the user's custom claims
-    const idTokenResult = await user.getIdTokenResult();
-    const claims = idTokenResult.claims;
-    
-    // Make sure claims are properly set
-    if (!claims.admin) {
-      console.log("❌ User is not an admin");
-      await auth.signOut();
-      return { success: false, error: "Not an admin user" };
-    }
-    
-    // Get institution details from database
-    const userRecord = await admin.auth().getUser(user.uid);
-    
-    return { 
-      success: true, 
-      token: await user.getIdToken(),
-      user: {
-        uid: user.uid,
-        email: user.email,
-        institutionType: userRecord.customClaims?.institutionType,
-        institutionName: userRecord.customClaims?.institutionName
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      console.log("Firebase auth success!");
+      
+      const user = userCredential.user;
+      
+      // Get the user's custom claims
+      const idTokenResult = await user.getIdTokenResult();
+      const claims = idTokenResult.claims;
+      
+      // Check if user has any role
+      if (!claims.role) {
+        console.log("❌ User has no role assigned");
+        await auth.signOut();
+        return { success: false, error: "User role not found" };
       }
-    };
-  } catch (error) {
-    console.error("🔥 Firebase Error:", error.message);
-    return { success: false, error: error.message };
+      
+      // Get institution details from database
+      const userRecord = await admin.auth().getUser(user.uid);
+      
+      return { 
+        success: true, 
+        token: await user.getIdToken(),
+        user: {
+          uid: user.uid,
+          email: user.email,
+          role: userRecord.customClaims?.role || 'institute',
+          institutionType: userRecord.customClaims?.institutionType,
+          institutionName: userRecord.customClaims?.institutionName
+        }
+      };
+    } catch (error) {
+      console.error("🔥 Firebase Error:", error.message);
+      return { success: false, error: error.message };
+    }
   }
-}
 
   static async adminRegister(institutionData) {
     const { email, password, institutionName, institutionType } = institutionData;
@@ -84,15 +85,15 @@ class AuthModel {
         emailVerified: false,
       });
 
-      // Set custom claims to make this user an admin
+      // Set custom claims - ALL registered users are 'institute' by default
       await admin.auth().setCustomUserClaims(userRecord.uid, {
-        admin: true,
+        role: 'institute', // Set as 'institute' instead of 'admin'
         institutionType: institutionType,
         institutionName: institutionName,
         registeredAt: new Date().toISOString()
       });
 
-      // Store additional institution details in Realtime Database using your existing db
+      // Store additional institution details in Realtime Database
       const institutionsRef = db.ref('institutions');
       
       await institutionsRef.child(userRecord.uid).set({
@@ -101,12 +102,13 @@ class AuthModel {
         email: email,
         createdAt: new Date().toISOString(),
         status: 'active',
-        uid: userRecord.uid
+        uid: userRecord.uid,
+        role: 'institute'
       });
 
-      console.log(`✅ Admin user created successfully: ${email}`);
+      console.log(`✅ Institute user created successfully: ${email}`);
       
-      // Auto-login after registration (optional - remove if you want manual login)
+      // Auto-login after registration
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const token = await userCredential.user.getIdToken();
       
@@ -117,6 +119,7 @@ class AuthModel {
         user: {
           uid: userRecord.uid,
           email: email,
+          role: 'institute',
           institutionName: institutionName,
           institutionType: institutionType
         }
@@ -128,7 +131,55 @@ class AuthModel {
     }
   }
 
-  // Optional: Get institution details from Realtime Database
+  // NEW: Method to create admin users (for super admin)
+  static async createAdminUser(email, password, institutionName = 'System Admin') {
+    try {
+      // Check if user already exists
+      try {
+        const existingUser = await admin.auth().getUserByEmail(email);
+        if (existingUser) {
+          return { success: false, error: "Email already registered" };
+        }
+      } catch (error) {
+        if (error.code !== 'auth/user-not-found') {
+          throw error;
+        }
+      }
+
+      // Create the user
+      const userRecord = await admin.auth().createUser({
+        email: email,
+        password: password,
+        displayName: institutionName,
+        emailVerified: false,
+      });
+
+      // Set custom claims as ADMIN
+      await admin.auth().setCustomUserClaims(userRecord.uid, {
+        role: 'admin',
+        institutionType: 'Admin',
+        institutionName: institutionName,
+        registeredAt: new Date().toISOString()
+      });
+
+      console.log(`✅ Admin user created successfully: ${email}`);
+      
+      return { 
+        success: true, 
+        message: "Admin user created successfully",
+        user: {
+          uid: userRecord.uid,
+          email: email,
+          role: 'admin'
+        }
+      };
+      
+    } catch (error) {
+      console.error("❌ Admin Creation Error:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
   static async getInstitutionDetails(uid) {
     try {
       const institutionRef = db.ref(`institutions/${uid}`);
@@ -145,7 +196,6 @@ class AuthModel {
     }
   }
 
-  // Optional: Update institution status
   static async updateInstitutionStatus(uid, status) {
     try {
       const institutionRef = db.ref(`institutions/${uid}/status`);
@@ -158,7 +208,6 @@ class AuthModel {
     }
   }
 
-  // Optional: Get all institutions (admin only)
   static async getAllInstitutions() {
     try {
       const institutionsRef = db.ref('institutions');
