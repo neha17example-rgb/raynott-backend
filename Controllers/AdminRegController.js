@@ -1,10 +1,5 @@
 // Controllers/AdminRegController.js
 const { db } = require('../firebaseAdmin');
-const SchoolModel = require('../Models/SchoolModel');
-const CollegeModel = require('../Models/CollegeModel');
-const PUCollegeModel = require('../Models/PuCollegeModel');
-const TuitionCoachingModel = require('../Models/TuitionCoachingModel');
-const TeacherModel = require('../Models/TeachersModel');
 
 const getPendingRegistrations = async (req, res) => {
   try {
@@ -50,7 +45,31 @@ const getAllRegistrations = async (req, res) => {
   }
 };
 
-// FIXED: approveRegistration with proper school creation and response
+// Get the correct collection name based on institution type
+const getCollectionName = (institutionType) => {
+  const collectionMap = {
+    'school': 'schools',
+    'college': 'colleges',
+    'pu_college': 'pucolleges',
+    'coaching': 'tuitioncoaching',
+    'teacher': 'teachers'
+  };
+  return collectionMap[institutionType] || 'schools';
+};
+
+// Get the correct type label
+const getInstitutionTypeLabel = (institutionType) => {
+  const labelMap = {
+    'school': 'School',
+    'college': 'College',
+    'pu_college': 'PU College',
+    'coaching': 'Coaching Center',
+    'teacher': 'Teacher'
+  };
+  return labelMap[institutionType] || 'School';
+};
+
+// FIXED: approveRegistration with proper routing to correct collections
 const approveRegistration = async (req, res) => {
   try {
     const { id } = req.params;
@@ -69,43 +88,50 @@ const approveRegistration = async (req, res) => {
       });
     }
     
-    // Check if school already exists for this registration
-    let schoolId = request.schoolId;
+    const institutionType = request.institutionType || request.type || 'school';
+    const collectionName = getCollectionName(institutionType);
+    const typeLabel = getInstitutionTypeLabel(institutionType);
     
-    if (!schoolId) {
-      console.log('🏫 Creating school from registration data...');
+    console.log(`🏫 Creating ${typeLabel} in collection: ${collectionName}`);
+    
+    // Check if institution already exists
+    let institutionId = request.institutionId || request.schoolId;
+    
+    if (!institutionId) {
+      // Create the institution in the appropriate collection
+      const institutionRef = db.ref(collectionName).push();
+      institutionId = institutionRef.key;
       
-      // Create the school from the registration data
-      const schoolRef = db.ref('schools').push();
-      schoolId = schoolRef.key;
-      
-      // Create school document with proper data
-      const schoolData = {
-        id: schoolId,
+      // Prepare base institution data
+      const institutionData = {
+        id: institutionId,
+        institutionType: institutionType,
         name: request.name || request.institutionName || '',
         tagline: request.tagline || '',
-        typeOfSchool: request.typeOfSchool || '',
-        affiliation: request.affiliation || '',
-        grade: request.grade || '',
-        ageForAdmission: request.ageForAdmission || '',
-        language: request.language || '',
         establishmentYear: request.establishmentYear || '',
         about: request.about || '',
+        address: request.address || '',
+        city: request.city || '',
+        state: request.state || '',
+        pincode: request.pincode || '',
+        email: request.email || '',
+        phone: request.phone || '',
+        website: request.website || '',
+        googleMapsEmbedUrl: request.googleMapsEmbedUrl || '',
         facilities: request.facilities || [],
+        socialMedia: request.socialMedia || {},
+        // Fee Structure
         totalAnnualFee: request.totalAnnualFee || '',
         admissionFee: request.admissionFee || '',
         tuitionFee: request.tuitionFee || '',
         transportFee: request.transportFee || '',
         booksUniformsFee: request.booksUniformsFee || '',
-        address: request.address || '',
-        city: request.city || '',
-        state: request.state || '',
-        pincode: request.pincode || '',
-        phone: request.phone || '',
-        email: request.email || '',
-        website: request.website || '',
-        socialMedia: request.socialMedia || {},
-        googleMapsEmbedUrl: request.googleMapsEmbedUrl || '',
+        // Contact Info
+        principalName: request.principalName || '',
+        contactPerson: request.contactPerson || '',
+        alternatePhone: request.alternatePhone || '',
+        officeHours: request.officeHours || '',
+        // Infrastructure
         campusSize: request.campusSize || '',
         classrooms: request.classrooms || '',
         laboratories: request.laboratories || '',
@@ -118,45 +144,117 @@ const approveRegistration = async (req, res) => {
         wifi: request.wifi || '',
         hostel: request.hostel || '',
         sports: request.sports || '',
+        // Admission
         admissionLink: request.admissionLink || '',
         admissionProcess: request.admissionProcess || '',
+        // Images
         schoolImage: request.schoolImage || '',
         photos: request.photos || [],
-        studentStrength: request.studentStrength || '',
-        teacherStrength: request.teacherStrength || '',
-        studentTeacherRatio: request.studentTeacherRatio || '',
-        principalName: request.principalName || '',
-        contactPerson: request.contactPerson || '',
-        alternatePhone: request.alternatePhone || '',
-        officeHours: request.officeHours || '',
+        // Documents
+        registrationCertificate: request.registrationCertificate || '',
+        affiliationNumber: request.affiliationNumber || '',
+        qualificationCertificates: request.qualificationCertificates || [],
+        idProof: request.idProof || '',
+        profileImage: request.profileImage || '',
+        otherDocuments: request.otherDocuments || [],
+        // Status
         status: 'active',
         registrationId: id,
         approvedAt: new Date().toISOString(),
         createdAt: new Date().toISOString()
       };
+
+      // Add institution-specific fields based on type
+      if (institutionType === 'school') {
+        institutionData.typeOfSchool = request.typeOfSchool || '';
+        institutionData.affiliation = request.affiliation || '';
+        institutionData.grade = request.grade || '';
+        institutionData.ageForAdmission = request.ageForAdmission || '';
+        institutionData.language = request.language || '';
+        institutionData.studentStrength = request.studentStrength || '';
+        institutionData.teacherStrength = request.teacherStrength || '';
+        institutionData.studentTeacherRatio = request.studentTeacherRatio || '';
+      } else if (institutionType === 'college') {
+        institutionData.typeOfCollege = request.typeOfCollege || '';
+        institutionData.universityAffiliation = request.universityAffiliation || '';
+        institutionData.coursesOffered = request.coursesOffered || '';
+        institutionData.duration = request.duration || '';
+        institutionData.accreditation = request.accreditation || '';
+        institutionData.placementStatistics = request.placementStatistics || '';
+        institutionData.departments = request.departments || '';
+      } else if (institutionType === 'pu_college') {
+        institutionData.board = request.board || '';
+        institutionData.streams = request.streams || '';
+        institutionData.subjects = request.subjects || '';
+        institutionData.programDuration = request.programDuration || '';
+        institutionData.competitiveExamPrep = request.competitiveExamPrep || '';
+      } else if (institutionType === 'coaching') {
+        institutionData.typeOfCoaching = request.typeOfCoaching || '';
+        institutionData.classes = request.classes || '';
+        institutionData.batchSize = request.batchSize || '';
+        institutionData.classDuration = request.classDuration || '';
+        institutionData.faculty = request.faculty || '';
+        institutionData.studyMaterial = request.studyMaterial || '';
+        institutionData.tests = request.tests || '';
+        institutionData.doubtSessions = request.doubtSessions || '';
+        institutionData.infrastructure = request.infrastructure || '';
+        institutionData.demoClass = request.demoClass || '';
+        institutionData.flexibleTimings = request.flexibleTimings || '';
+      } else if (institutionType === 'teacher') {
+        institutionData.teacherName = request.teacherName || '';
+        institutionData.qualifications = request.qualifications || '';
+        institutionData.experience = request.experience || '';
+        institutionData.teachingMode = request.teachingMode || '';
+        institutionData.languages = request.languages || '';
+        institutionData.specialization = request.specialization || '';
+        institutionData.certifications = request.certifications || '';
+        institutionData.availability = request.availability || '';
+        institutionData.hourlyRate = request.hourlyRate || '';
+        institutionData.monthlyPackage = request.monthlyPackage || '';
+        institutionData.examPreparation = request.examPreparation || '';
+        institutionData.demoFee = request.demoFee || '';
+        institutionData.teachingApproach = request.teachingApproach || '';
+        institutionData.studyMaterials = request.studyMaterials || '';
+        institutionData.sessionDuration = request.sessionDuration || '';
+        institutionData.studentLevel = request.studentLevel || '';
+        institutionData.classSize = request.classSize || '';
+        institutionData.onlinePlatform = request.onlinePlatform || '';
+        institutionData.progressReports = request.progressReports || '';
+        institutionData.performanceTracking = request.performanceTracking || '';
+        institutionData.teachingProcess = request.teachingProcess || '';
+        institutionData.institutionName = request.institutionName || '';
+        institutionData.institutionPosition = request.institutionPosition || '';
+        institutionData.institutionExperience = request.institutionExperience || '';
+        institutionData.teacherType = request.teacherType || '';
+      }
       
-      await schoolRef.set(schoolData);
-      console.log('✅ School created with ID:', schoolId);
+      // Save to the correct collection
+      await institutionRef.set(institutionData);
+      console.log(`✅ ${typeLabel} created with ID:`, institutionId, 'in collection:', collectionName);
       
     } else {
-      console.log('✅ School already exists with ID:', schoolId);
+      console.log(`✅ ${typeLabel} already exists with ID:`, institutionId);
     }
     
-    // Update registration request with schoolId and status
+    // Update registration request with institutionId and status
     await requestRef.update({
       status: 'approved',
       approvedAt: new Date().toISOString(),
-      schoolId: schoolId,
+      institutionId: institutionId,
+      collectionName: collectionName,
+      institutionType: institutionType,
       adminNotes: adminNotes || null
     });
     
-    // Return the schoolId in the response
+    // Return the institutionId in the response
     res.json({
       success: true,
       message: 'Registration approved successfully',
       data: { 
-        schoolId: schoolId, 
-        registrationId: id 
+        institutionId: institutionId, 
+        registrationId: id,
+        institutionType: institutionType,
+        collectionName: collectionName
       }
     });
     
@@ -170,7 +268,6 @@ const approveRegistration = async (req, res) => {
   }
 };
 
-// FIXED: moveToPublicCollection now returns the ID
 const moveToPublicCollection = async (request) => {
   try {
     const publicData = { ...request };
@@ -189,26 +286,7 @@ const moveToPublicCollection = async (request) => {
     publicData.updatedAt = new Date().toISOString();
     
     // Collection mapping
-    let collectionName;
-    switch (request.institutionType) {
-      case 'school':
-        collectionName = 'schools';
-        break;
-      case 'college':
-        collectionName = 'colleges';
-        break;
-      case 'pu_college':
-        collectionName = 'pucolleges';
-        break;
-      case 'coaching':
-        collectionName = 'tuitioncoaching';
-        break;
-      case 'teacher':
-        collectionName = 'teachers';
-        break;
-      default:
-        collectionName = 'others';
-    }
+    const collectionName = getCollectionName(request.institutionType);
     
     const publicRef = db.ref(collectionName).push();
     const publicId = publicRef.key;
@@ -297,7 +375,7 @@ const getRegistrationById = async (req, res) => {
   }
 };
 
-// FIX: Endpoint to fix existing registrations without schoolId
+// FIX: Endpoint to fix existing registrations - MOVES data to correct collection
 const fixRegistration = async (req, res) => {
   try {
     const { id } = req.params;
@@ -315,40 +393,73 @@ const fixRegistration = async (req, res) => {
       });
     }
     
-    // Check if school already exists
-    let schoolId = request.schoolId;
+    const institutionType = request.institutionType || request.type || 'school';
+    const correctCollection = getCollectionName(institutionType);
+    const typeLabel = getInstitutionTypeLabel(institutionType);
     
-    if (!schoolId) {
-      console.log('🏫 Creating missing school for registration...');
+    // Check if institution already exists
+    let institutionId = request.institutionId || request.schoolId;
+    
+    // If institutionId exists, check if it's in the correct collection
+    if (institutionId) {
+      // Check if the institution is in the correct collection
+      const wrongCollection = request.collectionName || 'schools';
       
-      // Create school from registration
-      const schoolRef = db.ref('schools').push();
-      schoolId = schoolRef.key;
+      if (wrongCollection !== correctCollection) {
+        console.log(`⚠️ Institution is in wrong collection: ${wrongCollection}, should be: ${correctCollection}`);
+        
+        // Get the data from the wrong collection
+        const wrongRef = db.ref(`${wrongCollection}/${institutionId}`);
+        const wrongSnapshot = await wrongRef.once('value');
+        const wrongData = wrongSnapshot.val();
+        
+        if (wrongData) {
+          // Save to the correct collection
+          const correctRef = db.ref(`${correctCollection}/${institutionId}`);
+          await correctRef.set({ ...wrongData, collectionName: correctCollection });
+          
+          // Delete from wrong collection
+          await wrongRef.remove();
+          
+          console.log(`✅ Moved institution from ${wrongCollection} to ${correctCollection}`);
+        }
+      } else {
+        console.log(`✅ Institution is already in correct collection: ${correctCollection}`);
+      }
+    } else {
+      // If no institutionId, create the institution in the correct collection
+      console.log(`🏫 Creating missing ${typeLabel} in collection: ${correctCollection}`);
       
-      const schoolData = {
-        id: schoolId,
-        name: request.name || request.institutionName || 'School',
-        email: request.email || '',
-        phone: request.phone || '',
+      const institutionRef = db.ref(correctCollection).push();
+      institutionId = institutionRef.key;
+      
+      // Prepare base institution data
+      const institutionData = {
+        id: institutionId,
+        institutionType: institutionType,
+        name: request.name || request.institutionName || '',
+        tagline: request.tagline || '',
+        establishmentYear: request.establishmentYear || '',
+        about: request.about || '',
         address: request.address || '',
         city: request.city || '',
         state: request.state || '',
         pincode: request.pincode || '',
-        typeOfSchool: request.typeOfSchool || '',
-        affiliation: request.affiliation || '',
-        grade: request.grade || '',
-        establishmentYear: request.establishmentYear || '',
-        tagline: request.tagline || '',
-        about: request.about || '',
+        email: request.email || '',
+        phone: request.phone || '',
+        website: request.website || '',
+        googleMapsEmbedUrl: request.googleMapsEmbedUrl || '',
         facilities: request.facilities || [],
+        socialMedia: request.socialMedia || {},
         totalAnnualFee: request.totalAnnualFee || '',
         admissionFee: request.admissionFee || '',
         tuitionFee: request.tuitionFee || '',
         transportFee: request.transportFee || '',
         booksUniformsFee: request.booksUniformsFee || '',
-        website: request.website || '',
-        socialMedia: request.socialMedia || {},
-        googleMapsEmbedUrl: request.googleMapsEmbedUrl || '',
+        principalName: request.principalName || '',
+        contactPerson: request.contactPerson || '',
+        alternatePhone: request.alternatePhone || '',
+        officeHours: request.officeHours || '',
         campusSize: request.campusSize || '',
         classrooms: request.classrooms || '',
         laboratories: request.laboratories || '',
@@ -365,39 +476,104 @@ const fixRegistration = async (req, res) => {
         admissionProcess: request.admissionProcess || '',
         schoolImage: request.schoolImage || '',
         photos: request.photos || [],
-        studentStrength: request.studentStrength || '',
-        teacherStrength: request.teacherStrength || '',
-        studentTeacherRatio: request.studentTeacherRatio || '',
-        principalName: request.principalName || '',
-        contactPerson: request.contactPerson || '',
-        alternatePhone: request.alternatePhone || '',
-        officeHours: request.officeHours || '',
+        registrationCertificate: request.registrationCertificate || '',
+        affiliationNumber: request.affiliationNumber || '',
+        qualificationCertificates: request.qualificationCertificates || [],
+        idProof: request.idProof || '',
+        profileImage: request.profileImage || '',
+        otherDocuments: request.otherDocuments || [],
         status: 'active',
         registrationId: id,
         createdAt: new Date().toISOString(),
         approvedAt: request.approvedAt || new Date().toISOString()
       };
+
+      // Add institution-specific fields based on type
+      if (institutionType === 'school') {
+        institutionData.typeOfSchool = request.typeOfSchool || '';
+        institutionData.affiliation = request.affiliation || '';
+        institutionData.grade = request.grade || '';
+        institutionData.ageForAdmission = request.ageForAdmission || '';
+        institutionData.language = request.language || '';
+        institutionData.studentStrength = request.studentStrength || '';
+        institutionData.teacherStrength = request.teacherStrength || '';
+        institutionData.studentTeacherRatio = request.studentTeacherRatio || '';
+      } else if (institutionType === 'college') {
+        institutionData.typeOfCollege = request.typeOfCollege || '';
+        institutionData.universityAffiliation = request.universityAffiliation || '';
+        institutionData.coursesOffered = request.coursesOffered || '';
+        institutionData.duration = request.duration || '';
+        institutionData.accreditation = request.accreditation || '';
+        institutionData.placementStatistics = request.placementStatistics || '';
+        institutionData.departments = request.departments || '';
+      } else if (institutionType === 'pu_college') {
+        institutionData.board = request.board || '';
+        institutionData.streams = request.streams || '';
+        institutionData.subjects = request.subjects || '';
+        institutionData.programDuration = request.programDuration || '';
+        institutionData.competitiveExamPrep = request.competitiveExamPrep || '';
+      } else if (institutionType === 'coaching') {
+        institutionData.typeOfCoaching = request.typeOfCoaching || '';
+        institutionData.classes = request.classes || '';
+        institutionData.batchSize = request.batchSize || '';
+        institutionData.classDuration = request.classDuration || '';
+        institutionData.faculty = request.faculty || '';
+        institutionData.studyMaterial = request.studyMaterial || '';
+        institutionData.tests = request.tests || '';
+        institutionData.doubtSessions = request.doubtSessions || '';
+        institutionData.infrastructure = request.infrastructure || '';
+        institutionData.demoClass = request.demoClass || '';
+        institutionData.flexibleTimings = request.flexibleTimings || '';
+      } else if (institutionType === 'teacher') {
+        institutionData.teacherName = request.teacherName || '';
+        institutionData.qualifications = request.qualifications || '';
+        institutionData.experience = request.experience || '';
+        institutionData.teachingMode = request.teachingMode || '';
+        institutionData.languages = request.languages || '';
+        institutionData.specialization = request.specialization || '';
+        institutionData.certifications = request.certifications || '';
+        institutionData.availability = request.availability || '';
+        institutionData.hourlyRate = request.hourlyRate || '';
+        institutionData.monthlyPackage = request.monthlyPackage || '';
+        institutionData.examPreparation = request.examPreparation || '';
+        institutionData.demoFee = request.demoFee || '';
+        institutionData.teachingApproach = request.teachingApproach || '';
+        institutionData.studyMaterials = request.studyMaterials || '';
+        institutionData.sessionDuration = request.sessionDuration || '';
+        institutionData.studentLevel = request.studentLevel || '';
+        institutionData.classSize = request.classSize || '';
+        institutionData.onlinePlatform = request.onlinePlatform || '';
+        institutionData.progressReports = request.progressReports || '';
+        institutionData.performanceTracking = request.performanceTracking || '';
+        institutionData.teachingProcess = request.teachingProcess || '';
+        institutionData.institutionName = request.institutionName || '';
+        institutionData.institutionPosition = request.institutionPosition || '';
+        institutionData.institutionExperience = request.institutionExperience || '';
+        institutionData.teacherType = request.teacherType || '';
+      }
       
-      await schoolRef.set(schoolData);
-      console.log('✅ School created with ID:', schoolId);
-      
-      // Update registration
-      await requestRef.update({
-        schoolId: schoolId
-      });
-      
-      res.json({
-        success: true,
-        message: 'Registration fixed successfully',
-        data: { schoolId, registrationId: id }
-      });
-    } else {
-      res.json({
-        success: true,
-        message: 'School already exists',
-        data: { schoolId, registrationId: id }
-      });
+      await institutionRef.set(institutionData);
+      console.log(`✅ ${typeLabel} created with ID:`, institutionId, 'in collection:', correctCollection);
     }
+    
+    // Update registration with correct data
+    await requestRef.update({
+      institutionId: institutionId,
+      collectionName: correctCollection,
+      institutionType: institutionType
+    });
+    
+    res.json({
+      success: true,
+      message: 'Registration fixed successfully',
+      data: { 
+        institutionId: institutionId, 
+        registrationId: id,
+        institutionType: institutionType,
+        collectionName: correctCollection
+      }
+    });
+    
   } catch (error) {
     console.error('Error fixing registration:', error);
     res.status(500).json({

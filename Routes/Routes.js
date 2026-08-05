@@ -14,10 +14,8 @@ const AdminRegistrationController = require('../Controllers/AdminRegController')
 const BestSellersController = require('../Controllers/BestSellers');
 const BookDemoController = require('../Controllers/BookaDemoController');
 
-// 🔥 FIX: Import Firebase Database
-const { db } = require('../firebaseAdmin'); // Make sure this path is correct
+const { db } = require('../firebaseAdmin'); 
 
-// Auth Routes
 router.post('/login', AuthController.loginAdmin);
 router.post('/register', AuthController.registerAdmin);
 router.get('/admin/user-data', verifyAdmin, AuthController.getUserData);
