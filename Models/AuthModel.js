@@ -22,6 +22,182 @@ class AuthModel {
     }
   }
 
+  // PARENT REGISTRATION
+static async parentRegister(parentData) {
+  const { email, password, parentName, institutionType } = parentData;
+  
+  try {
+    // Check if user already exists
+    try {
+      const existingUser = await admin.auth().getUserByEmail(email);
+      if (existingUser) {
+        return { success: false, error: "Email already registered" };
+      }
+    } catch (error) {
+      if (error.code !== 'auth/user-not-found') {
+        throw error;
+      }
+    }
+
+    // Create the user in Firebase Auth
+    const userRecord = await admin.auth().createUser({
+      email: email,
+      password: password,
+      displayName: parentName,
+      emailVerified: false,
+    });
+
+    // Set custom claims as PARENT
+    await admin.auth().setCustomUserClaims(userRecord.uid, {
+      role: 'parent',
+      parentName: parentName,
+      institutionType: institutionType,
+      registeredAt: new Date().toISOString()
+    });
+
+    // Store parent data in Realtime Database
+    const parentsRef = db.ref('parents');
+    
+    await parentsRef.child(userRecord.uid).set({
+      parentName: parentName,
+      institutionType: institutionType,
+      email: email,
+      createdAt: new Date().toISOString(),
+      status: 'active',
+      uid: userRecord.uid,
+      role: 'parent'
+    });
+
+    console.log(`✅ Parent user created successfully: ${email}`);
+    
+    // Auto-login after registration
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const token = await userCredential.user.getIdToken();
+    
+    return { 
+      success: true, 
+      message: "Parent registration successful",
+      token: token,
+      parentData: {
+        uid: userRecord.uid,
+        email: email,
+        parentName: parentName,
+        institutionType: institutionType,
+        role: 'parent'
+      }
+    };
+    
+  } catch (error) {
+    console.error("❌ Parent Registration Error:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// PARENT LOGIN
+static async parentLogin(email, password) {
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    console.log("✅ Parent Firebase auth success!");
+    
+    const user = userCredential.user;
+    
+    // Get the user's custom claims
+    const idTokenResult = await user.getIdTokenResult();
+    const claims = idTokenResult.claims;
+    
+    // Check if user has parent role
+    if (claims.role !== 'parent') {
+      console.log("❌ User is not a parent");
+      await auth.signOut();
+      return { success: false, error: "Invalid account type. Please use the institute login." };
+    }
+    
+    // Get parent data from database
+    const parentSnapshot = await db.ref('parents')
+      .orderByChild('email')
+      .equalTo(email)
+      .once('value');
+    
+    let parentData = null;
+    parentSnapshot.forEach((child) => {
+      parentData = { id: child.key, ...child.val() };
+    });
+    
+    if (!parentData) {
+      return { success: false, error: "Parent data not found" };
+    }
+    
+    return { 
+      success: true, 
+      token: await user.getIdToken(),
+      parentData: {
+        uid: user.uid,
+        email: user.email,
+        parentName: parentData.parentName,
+        institutionType: parentData.institutionType,
+        role: 'parent'
+      }
+    };
+  } catch (error) {
+    console.error("🔥 Parent Login Error:", error.message);
+    return { success: false, error: error.message };
+  }
+}
+  // GET PARENT DATA
+  static async getParentData(uid) {
+    try {
+      const parentRef = db.ref(`parents/${uid}`);
+      const snapshot = await parentRef.once('value');
+      
+      if (snapshot.exists()) {
+        return { success: true, data: snapshot.val() };
+      } else {
+        return { success: false, error: "Parent not found" };
+      }
+    } catch (error) {
+      console.error("Error fetching parent:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // GET ALL PARENTS (Admin)
+  static async getAllParents() {
+    try {
+      const parentsRef = db.ref('parents');
+      const snapshot = await parentsRef.once('value');
+      
+      if (snapshot.exists()) {
+        const parents = [];
+        snapshot.forEach((child) => {
+          parents.push({
+            id: child.key,
+            ...child.val()
+          });
+        });
+        return { success: true, data: parents };
+      } else {
+        return { success: true, data: [] };
+      }
+    } catch (error) {
+      console.error("Error fetching parents:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // UPDATE PARENT STATUS
+  static async updateParentStatus(uid, status) {
+    try {
+      const parentRef = db.ref(`parents/${uid}/status`);
+      await parentRef.set(status);
+      
+      return { success: true, message: "Parent status updated successfully" };
+    } catch (error) {
+      console.error("Error updating parent status:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // Existing methods...
   static async adminLogin(email, password) {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -29,18 +205,15 @@ class AuthModel {
       
       const user = userCredential.user;
       
-      // Get the user's custom claims
       const idTokenResult = await user.getIdTokenResult();
       const claims = idTokenResult.claims;
       
-      // Check if user has any role
       if (!claims.role) {
         console.log("❌ User has no role assigned");
         await auth.signOut();
         return { success: false, error: "User role not found" };
       }
       
-      // Get institution details from database
       const userRecord = await admin.auth().getUser(user.uid);
       
       return { 
@@ -64,20 +237,17 @@ class AuthModel {
     const { email, password, institutionName, institutionType } = institutionData;
     
     try {
-      // Check if user already exists in Firebase Auth
       try {
         const existingUser = await admin.auth().getUserByEmail(email);
         if (existingUser) {
           return { success: false, error: "Email already registered" };
         }
       } catch (error) {
-        // User doesn't exist, continue with creation
         if (error.code !== 'auth/user-not-found') {
           throw error;
         }
       }
 
-      // Create the user in Firebase Auth
       const userRecord = await admin.auth().createUser({
         email: email,
         password: password,
@@ -85,15 +255,13 @@ class AuthModel {
         emailVerified: false,
       });
 
-      // Set custom claims - ALL registered users are 'institute' by default
       await admin.auth().setCustomUserClaims(userRecord.uid, {
-        role: 'institute', // Set as 'institute' instead of 'admin'
+        role: 'institute',
         institutionType: institutionType,
         institutionName: institutionName,
         registeredAt: new Date().toISOString()
       });
 
-      // Store additional institution details in Realtime Database
       const institutionsRef = db.ref('institutions');
       
       await institutionsRef.child(userRecord.uid).set({
@@ -108,7 +276,6 @@ class AuthModel {
 
       console.log(`✅ Institute user created successfully: ${email}`);
       
-      // Auto-login after registration
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const token = await userCredential.user.getIdToken();
       
@@ -131,10 +298,8 @@ class AuthModel {
     }
   }
 
-  // NEW: Method to create admin users (for super admin)
   static async createAdminUser(email, password, institutionName = 'System Admin') {
     try {
-      // Check if user already exists
       try {
         const existingUser = await admin.auth().getUserByEmail(email);
         if (existingUser) {
@@ -146,7 +311,6 @@ class AuthModel {
         }
       }
 
-      // Create the user
       const userRecord = await admin.auth().createUser({
         email: email,
         password: password,
@@ -154,7 +318,6 @@ class AuthModel {
         emailVerified: false,
       });
 
-      // Set custom claims as ADMIN
       await admin.auth().setCustomUserClaims(userRecord.uid, {
         role: 'admin',
         institutionType: 'Admin',

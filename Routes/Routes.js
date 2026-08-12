@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const AuthController = require('../Controllers/AuthController');
-const { verifyAdmin, verifyAuth } = require('../Middleware/authMiddleware'); 
+const { verifyAdmin, verifyAuth,verifyParent } = require('../Middleware/authMiddleware'); 
 const schoolController = require('../Controllers/SchoolController');
 const { upload } = require('../Middleware/uploadMiddleware');
 const CollegeController = require('../Controllers/CollegeController');
@@ -18,6 +18,11 @@ const { db } = require('../firebaseAdmin');
 
 router.post('/login', AuthController.loginAdmin);
 router.post('/register', AuthController.registerAdmin);
+
+router.post('/parent/login',AuthController.loginParent)
+router.post('/parent/register',AuthController.registerParent)
+router.get('/parent/data',verifyParent,AuthController.getParentData)
+
 router.get('/admin/user-data', verifyAdmin, AuthController.getUserData);
 
 // Admin Dashboard
@@ -28,6 +33,14 @@ router.get('/admin/dashboard', verifyAdmin, (req, res) => {
     user: req.user 
   });
 });
+
+router.get('/parent/dashboard',verifyParent,(req,res)=>{
+  res.json({
+    success:true,
+    message:"Welcome to Parent Dashboard",
+    parentData:req.parentData
+  })
+})
 
 // Institute Dashboard
 router.get('/dashboard', verifyAuth, (req, res) => {
