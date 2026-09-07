@@ -13,6 +13,7 @@ const RegistrationController = require('../Controllers/RegistrationControleer');
 const AdminRegistrationController = require('../Controllers/AdminRegController');
 const BestSellersController = require('../Controllers/BestSellers');
 const BookDemoController = require('../Controllers/BookaDemoController');
+const EnquiryController=require('../Controllers/EnquiryController')
 
 const { db } = require('../firebaseAdmin'); 
 
@@ -269,9 +270,28 @@ router.get('/registration/check', async (req, res) => {
   }
 });
 
-// Other Routes
 router.get('/bestsellers', BestSellersController.getBestSellers);
 router.post('/book-demo', BookDemoController.bookDemo);
 router.get('/book-demo', BookDemoController.getBookings);
+
+
+// ============ ENQUIRY ROUTES ============
+
+router.post('/enquiry/submit', EnquiryController.submitEnquiry);
+
+// Parent routes - Get parent's own enquiries
+router.get('/parent/enquiries', verifyParent, EnquiryController.getParentEnquiries);
+router.get('/parent/enquiries/:id', verifyParent, EnquiryController.getEnquiryById);
+
+router.get('/admin/enquiries', verifyAuth, EnquiryController.getAllEnquiries);
+router.get('/admin/enquiries/:id', verifyAuth, EnquiryController.getEnquiryById);
+router.get('/admin/enquiries/stats', verifyAuth, EnquiryController.getEnquiryStats);
+router.get('/admin/enquiries/institution/:institutionId', verifyAuth, EnquiryController.getInstitutionEnquiries);
+router.put('/admin/enquiries/:id/status', verifyAuth, EnquiryController.updateEnquiryStatus);
+router.post('/admin/enquiries/:id/response', verifyAuth, EnquiryController.addEnquiryResponse);
+router.delete('/admin/enquiries/:id', verifyAuth, EnquiryController.deleteEnquiry);
+
+// Institution routes - Get enquiries for a specific institution
+router.get('/institution/enquiries/:institutionId', EnquiryController.getInstitutionEnquiries);
 
 module.exports = router;
