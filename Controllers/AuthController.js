@@ -1,7 +1,9 @@
+// AuthController.js
 const AuthModel = require('../Models/AuthModel');
+const { admin, db } = require('../firebaseAdmin');
+const { auth } = require('../firebase');
 
 class AuthController {
-  // Existing methods...
   
   static async loginAdmin(req, res) {
     const { email, password } = req.body;
@@ -32,76 +34,115 @@ class AuthController {
     }
   }
 
- // PARENT LOGIN
-static async loginParent(req, res) {
-  const { email, password } = req.body;
-  
-  if (!email || !password) {
-    return res.status(400).json({ 
-      success: false, 
-      error: "Email and password are required" 
-    });
+  // PARENT LOGIN - Ensure token has proper claims
+  static async loginParent(req, res) {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Email and password are required" 
+      });
+    }
+
+    const result = await AuthModel.parentLogin(email, password);
+    
+    if (result.success) {
+      // Ensure the token has the parent role in claims
+      try {
+        const decodedToken = await admin.auth().verifyIdToken(result.token);
+        
+        // If role is not set in claims, set it
+        if (!decodedToken.role || decodedToken.role !== 'parent') {
+          console.log("⚠️ Setting parent role in claims...");
+          await admin.auth().setCustomUserClaims(decodedToken.uid, {
+            role: 'parent',
+            parentName: result.parentData.parentName,
+            institutionType: result.parentData.institutionType
+          });
+          
+          // Get a fresh token with updated claims
+          const { signInWithEmailAndPassword } = require('firebase/auth');
+          const userCredential = await signInWithEmailAndPassword(auth, email, password);
+          const freshToken = await userCredential.user.getIdToken(true);
+          
+          res.json({ 
+            success: true, 
+            token: freshToken,
+            parentData: result.parentData
+          });
+          return;
+        }
+      } catch (claimError) {
+        console.error("Error setting claims:", claimError);
+      }
+      
+      res.json({ 
+        success: true, 
+        token: result.token,
+        parentData: result.parentData
+      });
+    } else {
+      res.status(401).json({ success: false, error: result.error });
+    }
   }
 
-  const result = await AuthModel.parentLogin(email, password);
-  
-  if (result.success) {
-    res.json({ 
-      success: true, 
-      token: result.token,
-      parentData: result.parentData
-    });
-  } else {
-    res.status(401).json({ success: false, error: result.error });
-  }
-}
+  // PARENT REGISTRATION
+  static async registerParent(req, res) {
+    const { email, password, parentName, institutionType } = req.body;
+    
+    if (!email || !password || !parentName || !institutionType) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "All fields are required: email, password, parentName, institutionType" 
+      });
+    }
 
-// PARENT REGISTRATION
-static async registerParent(req, res) {
-  const { email, password, parentName, institutionType } = req.body;
-  
-  // Validation
-  if (!email || !password || !parentName || !institutionType) {
-    return res.status(400).json({ 
-      success: false, 
-      error: "All fields are required: email, password, parentName, institutionType" 
-    });
-  }
+    if (password.length < 6) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Password must be at least 6 characters long" 
+      });
+    }
 
-  if (password.length < 6) {
-    return res.status(400).json({ 
-      success: false, 
-      error: "Password must be at least 6 characters long" 
-    });
-  }
+    const validTypes = ['Schools', 'Colleges', 'PU College', 'Coaching/Tuition', 'All Teachers'];
+    if (!validTypes.includes(institutionType)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Invalid institution type" 
+      });
+    }
 
-  const validTypes = ['Schools', 'Colleges', 'PU College', 'Coaching/Tuition', 'All Teachers'];
-  if (!validTypes.includes(institutionType)) {
-    return res.status(400).json({ 
-      success: false, 
-      error: "Invalid institution type" 
+    const result = await AuthModel.parentRegister({
+      email,
+      password,
+      parentName,
+      institutionType
     });
+    
+    if (result.success) {
+      // Ensure the token has parent role in claims
+      try {
+        const decodedToken = await admin.auth().verifyIdToken(result.token);
+        await admin.auth().setCustomUserClaims(decodedToken.uid, {
+          role: 'parent',
+          parentName: parentName,
+          institutionType: institutionType
+        });
+      } catch (claimError) {
+        console.error("Error setting claims during registration:", claimError);
+      }
+      
+      res.status(201).json({ 
+        success: true, 
+        message: result.message,
+        token: result.token,
+        parentData: result.parentData
+      });
+    } else {
+      res.status(400).json({ success: false, error: result.error });
+    }
   }
-
-  const result = await AuthModel.parentRegister({
-    email,
-    password,
-    parentName,
-    institutionType
-  });
-  
-  if (result.success) {
-    res.status(201).json({ 
-      success: true, 
-      message: result.message,
-      token: result.token,
-      parentData: result.parentData
-    });
-  } else {
-    res.status(400).json({ success: false, error: result.error });
-  }
-}
- 
 
   // GET PARENT DATA
   static async getParentData(req, res) {
@@ -188,7 +229,6 @@ static async registerParent(req, res) {
     try {
       const uid = req.user.uid;
       
-      const admin = require('firebase-admin');
       const userRecord = await admin.auth().getUser(uid);
       const claims = userRecord.customClaims || {};
       
