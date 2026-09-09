@@ -283,13 +283,13 @@ router.post('/enquiry/submit', EnquiryController.submitEnquiry);
 router.get('/parent/enquiries', verifyParent, EnquiryController.getParentEnquiries);
 router.get('/parent/enquiries/:id', verifyParent, EnquiryController.getEnquiryById);
 
-router.get('/admin/enquiries', verifyAdmin, EnquiryController.getAllEnquiries);
-router.get('/admin/enquiries/:id', verifyAdmin, EnquiryController.getEnquiryById);
-router.get('/admin/enquiries/stats', verifyAdmin, EnquiryController.getEnquiryStats);
-router.get('/admin/enquiries/institution/:institutionId', verifyAdmin, EnquiryController.getInstitutionEnquiries);
-router.put('/admin/enquiries/:id/status', verifyAdmin, EnquiryController.updateEnquiryStatus);
-router.post('/admin/enquiries/:id/response', verifyAdmin, EnquiryController.addEnquiryResponse);
-router.delete('/admin/enquiries/:id', verifyAdmin, EnquiryController.deleteEnquiry);
+router.get('/admin/enquiries', verifyAdmin, verifyAuth, EnquiryController.getAllEnquiries);
+router.get('/admin/enquiries/:id', verifyAdmin,verifyAuth, EnquiryController.getEnquiryById);
+router.get('/admin/enquiries/stats', verifyAdmin,verifyAuth, EnquiryController.getEnquiryStats);
+router.get('/admin/enquiries/institution/:institutionId', verifyAdmin,verifyAuth, EnquiryController.getInstitutionEnquiries);
+router.put('/admin/enquiries/:id/status',  verifyAuth,EnquiryController.updateEnquiryStatus);
+router.post('/admin/enquiries/:id/response', verifyAdmin,verifyAuth, EnquiryController.addEnquiryResponse);
+router.delete('/admin/enquiries/:id', verifyAdmin,verifyAuth, EnquiryController.deleteEnquiry);
 
 // Institution routes - Get enquiries for a specific institution
 router.get('/institution/enquiries/:institutionId', EnquiryController.getInstitutionEnquiries);

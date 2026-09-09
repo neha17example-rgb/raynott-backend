@@ -4,7 +4,7 @@ const EnquiryModel = require('../Models/EnquiryModel');
 // Submit a new enquiry
 const submitEnquiry = async (req, res) => {
   try {
-    console.log('📝 New enquiry request:', req.body);
+    console.log(' New enquiry request:', req.body);
 
     // Get parent info from request (if authenticated)
     const parentData = req.parentData || {};
