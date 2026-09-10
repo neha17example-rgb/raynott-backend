@@ -1,15 +1,54 @@
 const { db } = require('../firebaseAdmin');
 const EnquiryModel = require('../Models/EnquiryModel');
+const InstitutionLimitModel = require('../Models/InstitutionLimitModel');
 
-// Submit a new enquiry
+const DEFAULT_FREE_LIMIT = 5;
+
+// ============ HELPER: Get Institution Limit ============
+const getInstitutionLimitData = async (institutionId) => {
+  try {
+    const limitRef = db.ref(`institutionLimits/${institutionId}`);
+    const snapshot = await limitRef.once('value');
+    const data = snapshot.val();
+
+    if (!data) {
+      // Return default if no limit set
+      return {
+        institutionId,
+        freeLimit: DEFAULT_FREE_LIMIT,
+        customLimit: 0,
+        totalLimit: DEFAULT_FREE_LIMIT,
+        lastUpdatedAt: null
+      };
+    }
+
+    return {
+      institutionId,
+      freeLimit: data.freeLimit || DEFAULT_FREE_LIMIT,
+      customLimit: data.customLimit || 0,
+      totalLimit: (data.freeLimit || DEFAULT_FREE_LIMIT) + (data.customLimit || 0),
+      lastUpdatedAt: data.lastUpdatedAt || null,
+      ...data
+    };
+  } catch (error) {
+    console.error('Error fetching institution limit:', error);
+    return {
+      institutionId,
+      freeLimit: DEFAULT_FREE_LIMIT,
+      customLimit: 0,
+      totalLimit: DEFAULT_FREE_LIMIT,
+      lastUpdatedAt: null
+    };
+  }
+};
+
+// ============ SUBMIT ENQUIRY ============
 const submitEnquiry = async (req, res) => {
   try {
-    console.log(' New enquiry request:', req.body);
+    console.log('📝 New enquiry request:', req.body);
 
-    // Get parent info from request (if authenticated)
     const parentData = req.parentData || {};
 
-    // Create enquiry instance with parent data if available
     const enquiryData = {
       ...req.body,
       parentName: req.body.parentName || parentData.parentName || 'Parent',
@@ -21,7 +60,6 @@ const submitEnquiry = async (req, res) => {
 
     const enquiry = new EnquiryModel(enquiryData);
 
-    // Validate enquiry data
     const validationErrors = enquiry.validate();
     if (validationErrors.length > 0) {
       return res.status(400).json({
@@ -31,7 +69,6 @@ const submitEnquiry = async (req, res) => {
       });
     }
 
-    // Store enquiry in Firebase
     const enquiryRef = db.ref('enquiries').push();
     const enquiryId = enquiryRef.key;
 
@@ -44,7 +81,6 @@ const submitEnquiry = async (req, res) => {
 
     await enquiryRef.set(enquiryPayload);
 
-    // Also store under institution's enquiries for quick lookup
     const institutionEnquiryRef = db.ref(`institutionEnquiries/${enquiryPayload.institutionId}/${enquiryId}`);
     await institutionEnquiryRef.set({
       enquiryId: enquiryId,
@@ -70,7 +106,7 @@ const submitEnquiry = async (req, res) => {
   }
 };
 
-// Get all enquiries (admin only)
+// ============ GET ALL ENQUIRIES ============
 const getAllEnquiries = async (req, res) => {
   try {
     const { 
@@ -80,7 +116,7 @@ const getAllEnquiries = async (req, res) => {
       parentEmail,
       startDate,
       endDate,
-      limit = 50,
+      limit = 500,
       offset = 0 
     } = req.query;
 
@@ -88,22 +124,11 @@ const getAllEnquiries = async (req, res) => {
     const snapshot = await enquiriesRef.once('value');
     let enquiries = snapshot.val() || {};
 
-    // Convert to array
     let enquiriesArray = Object.values(enquiries);
 
-    // Apply filters
-    if (status) {
-      enquiriesArray = enquiriesArray.filter(e => e.status === status);
-    }
-
-    if (institutionId) {
-      enquiriesArray = enquiriesArray.filter(e => e.institutionId === institutionId);
-    }
-
-    if (institutionType) {
-      enquiriesArray = enquiriesArray.filter(e => e.institutionType === institutionType);
-    }
-
+    if (status) enquiriesArray = enquiriesArray.filter(e => e.status === status);
+    if (institutionId) enquiriesArray = enquiriesArray.filter(e => e.institutionId === institutionId);
+    if (institutionType) enquiriesArray = enquiriesArray.filter(e => e.institutionType === institutionType);
     if (parentEmail) {
       enquiriesArray = enquiriesArray.filter(e => 
         e.parentEmail && e.parentEmail.toLowerCase().includes(parentEmail.toLowerCase())
@@ -114,16 +139,13 @@ const getAllEnquiries = async (req, res) => {
       const start = new Date(startDate);
       enquiriesArray = enquiriesArray.filter(e => new Date(e.createdAt) >= start);
     }
-
     if (endDate) {
       const end = new Date(endDate);
       enquiriesArray = enquiriesArray.filter(e => new Date(e.createdAt) <= end);
     }
 
-    // Sort by createdAt (newest first)
     enquiriesArray.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    // Apply pagination
     const total = enquiriesArray.length;
     const paginated = enquiriesArray.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
 
@@ -148,7 +170,7 @@ const getAllEnquiries = async (req, res) => {
   }
 };
 
-// Get enquiries for a specific parent
+// ============ GET PARENT ENQUIRIES ============
 const getParentEnquiries = async (req, res) => {
   try {
     const parentEmail = req.parentData?.email || req.query.email;
@@ -164,7 +186,6 @@ const getParentEnquiries = async (req, res) => {
     const snapshot = await enquiriesRef.once('value');
     let enquiries = snapshot.val() || {};
 
-    // Convert to array and filter by parent email
     let enquiriesArray = Object.values(enquiries)
       .filter(e => e.parentEmail && e.parentEmail.toLowerCase() === parentEmail.toLowerCase())
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -185,7 +206,7 @@ const getParentEnquiries = async (req, res) => {
   }
 };
 
-// Get enquiries for a specific institution
+// ============ GET INSTITUTION ENQUIRIES (PUBLIC - WITH LIMIT) ============
 const getInstitutionEnquiries = async (req, res) => {
   try {
     const { institutionId } = req.params;
@@ -197,18 +218,34 @@ const getInstitutionEnquiries = async (req, res) => {
       });
     }
 
+    // Fetch all enquiries for this institution
     const enquiriesRef = db.ref('enquiries');
     const snapshot = await enquiriesRef.once('value');
     let enquiries = snapshot.val() || {};
 
-    // Convert to array and filter by institution ID
     let enquiriesArray = Object.values(enquiries)
       .filter(e => e.institutionId === institutionId)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
+    // Get the institution's limit
+    const limitInfo = await getInstitutionLimitData(institutionId);
+    const totalLimit = limitInfo.totalLimit;
+
+    // Split into visible and locked
+    const visibleEnquiries = enquiriesArray.slice(0, totalLimit);
+    const lockedEnquiries = enquiriesArray.slice(totalLimit);
+
+    // Return with limit info
     res.status(200).json({
       success: true,
-      data: enquiriesArray,
+      data: enquiriesArray,                    // All enquiries (for admin)
+      visibleEnquiries: visibleEnquiries,      // Only visible (for institution)
+      lockedCount: lockedEnquiries.length,     // Count of locked
+      limit: {
+        freeLimit: limitInfo.freeLimit,
+        customLimit: limitInfo.customLimit,
+        totalLimit: limitInfo.totalLimit
+      },
       count: enquiriesArray.length
     });
 
@@ -222,7 +259,7 @@ const getInstitutionEnquiries = async (req, res) => {
   }
 };
 
-// Get a single enquiry by ID
+// ============ GET SINGLE ENQUIRY BY ID ============
 const getEnquiryById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -245,9 +282,7 @@ const getEnquiryById = async (req, res) => {
       });
     }
 
-    // Check if parent has access to this enquiry
     if (req.parentData && enquiry.parentEmail !== req.parentData.email) {
-      // Check if user is admin
       if (!req.user || req.user.role !== 'admin') {
         return res.status(403).json({
           success: false,
@@ -271,25 +306,14 @@ const getEnquiryById = async (req, res) => {
   }
 };
 
-// Update enquiry status
+// ============ UPDATE ENQUIRY STATUS ============
 const updateEnquiryStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
 
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: 'Enquiry ID is required'
-      });
-    }
-
-    if (!status) {
-      return res.status(400).json({
-        success: false,
-        message: 'Status is required'
-      });
-    }
+    if (!id) return res.status(400).json({ success: false, message: 'Enquiry ID is required' });
+    if (!status) return res.status(400).json({ success: false, message: 'Status is required' });
 
     const validStatuses = ['pending', 'responded', 'closed'];
     if (!validStatuses.includes(status)) {
@@ -310,7 +334,6 @@ const updateEnquiryStatus = async (req, res) => {
       });
     }
 
-    // Update the enquiry
     const updates = {
       status: status,
       updatedAt: new Date().toISOString()
@@ -318,7 +341,6 @@ const updateEnquiryStatus = async (req, res) => {
 
     await enquiryRef.update(updates);
 
-    // Also update the institution enquiry reference
     if (enquiry.institutionId) {
       const institutionEnquiryRef = db.ref(`institutionEnquiries/${enquiry.institutionId}/${id}`);
       await institutionEnquiryRef.update({
@@ -343,38 +365,23 @@ const updateEnquiryStatus = async (req, res) => {
   }
 };
 
-// Add a response to an enquiry
+// ============ ADD ENQUIRY RESPONSE ============
 const addEnquiryResponse = async (req, res) => {
   try {
     const { id } = req.params;
     const { message, responseBy, responseByRole } = req.body;
 
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: 'Enquiry ID is required'
-      });
-    }
-
-    if (!message) {
-      return res.status(400).json({
-        success: false,
-        message: 'Response message is required'
-      });
-    }
+    if (!id) return res.status(400).json({ success: false, message: 'Enquiry ID is required' });
+    if (!message) return res.status(400).json({ success: false, message: 'Response message is required' });
 
     const enquiryRef = db.ref(`enquiries/${id}`);
     const snapshot = await enquiryRef.once('value');
     const enquiry = snapshot.val();
 
     if (!enquiry) {
-      return res.status(404).json({
-        success: false,
-        message: 'Enquiry not found'
-      });
+      return res.status(404).json({ success: false, message: 'Enquiry not found' });
     }
 
-    // Create response object
     const response = {
       id: `resp_${Date.now()}`,
       message: message,
@@ -383,11 +390,9 @@ const addEnquiryResponse = async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    // Get existing responses or initialize array
     const responses = enquiry.responses || [];
     responses.push(response);
 
-    // Update the enquiry with new response and status
     const updates = {
       responses: responses,
       status: 'responded',
@@ -396,7 +401,6 @@ const addEnquiryResponse = async (req, res) => {
 
     await enquiryRef.update(updates);
 
-    // Also update the institution enquiry reference
     if (enquiry.institutionId) {
       const institutionEnquiryRef = db.ref(`institutionEnquiries/${enquiry.institutionId}/${id}`);
       await institutionEnquiryRef.update({
@@ -421,7 +425,7 @@ const addEnquiryResponse = async (req, res) => {
   }
 };
 
-// Get enquiries statistics
+// ============ GET ENQUIRY STATS ============
 const getEnquiryStats = async (req, res) => {
   try {
     const enquiriesRef = db.ref('enquiries');
@@ -438,16 +442,12 @@ const getEnquiryStats = async (req, res) => {
       byInstitutionType: {}
     };
 
-    // Group by institution type
     enquiriesArray.forEach(e => {
       const type = e.institutionType || 'Unknown';
-      if (!stats.byInstitutionType[type]) {
-        stats.byInstitutionType[type] = 0;
-      }
+      if (!stats.byInstitutionType[type]) stats.byInstitutionType[type] = 0;
       stats.byInstitutionType[type]++;
     });
 
-    // Get recent enquiries (last 7 days)
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     
@@ -471,33 +471,23 @@ const getEnquiryStats = async (req, res) => {
   }
 };
 
-// Delete an enquiry (admin only)
+// ============ DELETE ENQUIRY ============
 const deleteEnquiry = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: 'Enquiry ID is required'
-      });
-    }
+    if (!id) return res.status(400).json({ success: false, message: 'Enquiry ID is required' });
 
     const enquiryRef = db.ref(`enquiries/${id}`);
     const snapshot = await enquiryRef.once('value');
     const enquiry = snapshot.val();
 
     if (!enquiry) {
-      return res.status(404).json({
-        success: false,
-        message: 'Enquiry not found'
-      });
+      return res.status(404).json({ success: false, message: 'Enquiry not found' });
     }
 
-    // Remove from main enquiries
     await enquiryRef.remove();
 
-    // Remove from institution enquiries
     if (enquiry.institutionId) {
       const institutionEnquiryRef = db.ref(`institutionEnquiries/${enquiry.institutionId}/${id}`);
       await institutionEnquiryRef.remove();
@@ -518,7 +508,238 @@ const deleteEnquiry = async (req, res) => {
   }
 };
 
+// ================================================================
+// ============ INSTITUTION LIMIT MANAGEMENT (NEW) ================
+// ================================================================
+
+// ============ SET / UPDATE INSTITUTION LIMIT (Admin Only) ============
+const setInstitutionLimit = async (req, res) => {
+  try {
+    const { institutionId } = req.params;
+    const { customLimit, institutionName, institutionType, institutionEmail, note } = req.body;
+
+    if (!institutionId) {
+      return res.status(400).json({ success: false, message: 'Institution ID is required' });
+    }
+
+    if (customLimit === undefined || customLimit === null) {
+      return res.status(400).json({ success: false, message: 'customLimit is required' });
+    }
+
+    if (customLimit < 0) {
+      return res.status(400).json({ success: false, message: 'customLimit cannot be negative' });
+    }
+
+    const limitRef = db.ref(`institutionLimits/${institutionId}`);
+    const existingSnapshot = await limitRef.once('value');
+    const existingData = existingSnapshot.val();
+
+    const currentFreeLimit = existingData?.freeLimit || DEFAULT_FREE_LIMIT;
+    const totalLimit = currentFreeLimit + Number(customLimit);
+
+    let limitData;
+
+    if (existingData) {
+      // Update existing
+      const model = new InstitutionLimitModel(existingData);
+      model.updateLimit(Number(customLimit), req.user?.email || 'admin', note || '');
+      
+      limitData = {
+        ...model.toJSON(),
+        institutionName: institutionName || existingData.institutionName || '',
+        institutionType: institutionType || existingData.institutionType || '',
+        institutionEmail: institutionEmail || existingData.institutionEmail || ''
+      };
+    } else {
+      // Create new
+      const model = new InstitutionLimitModel({
+        institutionId,
+        institutionName: institutionName || '',
+        institutionType: institutionType || '',
+        institutionEmail: institutionEmail || '',
+        freeLimit: DEFAULT_FREE_LIMIT,
+        customLimit: Number(customLimit),
+        totalLimit,
+        lastUpdatedBy: req.user?.email || 'admin'
+      });
+      
+      limitData = model.toJSON();
+      
+      // Add initial history
+      limitData.limitHistory = [{
+        id: `hist_${Date.now()}`,
+        action: 'initial_setup',
+        previousLimit: 0,
+        newLimit: Number(customLimit),
+        updatedBy: req.user?.email || 'admin',
+        note: note || 'Initial limit setup',
+        timestamp: new Date().toISOString()
+      }];
+    }
+
+    await limitRef.set(limitData);
+
+    console.log(`✅ Institution limit set: ${institutionId} → ${totalLimit} total`);
+
+    res.status(200).json({
+      success: true,
+      message: `Limit updated successfully. Institution can now see ${totalLimit} enquiries.`,
+      data: limitData
+    });
+
+  } catch (error) {
+    console.error('❌ Error setting institution limit:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to set institution limit',
+      error: error.message
+    });
+  }
+};
+
+// ============ GET INSTITUTION LIMIT (Public/Admin) ============
+const getInstitutionLimit = async (req, res) => {
+  try {
+    const { institutionId } = req.params;
+
+    if (!institutionId) {
+      return res.status(400).json({ success: false, message: 'Institution ID is required' });
+    }
+
+    const limitInfo = await getInstitutionLimitData(institutionId);
+
+    res.status(200).json({
+      success: true,
+      data: limitInfo
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching institution limit:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch institution limit',
+      error: error.message
+    });
+  }
+};
+
+// ============ GET ALL INSTITUTION LIMITS (Admin) ============
+const getAllInstitutionLimits = async (req, res) => {
+  try {
+    const limitsRef = db.ref('institutionLimits');
+    const snapshot = await limitsRef.once('value');
+    const limits = snapshot.val() || {};
+
+    const limitsArray = Object.values(limits).sort(
+      (a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0)
+    );
+
+    res.status(200).json({
+      success: true,
+      data: limitsArray,
+      count: limitsArray.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching all limits:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch institution limits',
+      error: error.message
+    });
+  }
+};
+
+// ============ RESET INSTITUTION LIMIT (Admin) ============
+const resetInstitutionLimit = async (req, res) => {
+  try {
+    const { institutionId } = req.params;
+
+    if (!institutionId) {
+      return res.status(400).json({ success: false, message: 'Institution ID is required' });
+    }
+
+    const limitRef = db.ref(`institutionLimits/${institutionId}`);
+    const snapshot = await limitRef.once('value');
+    const existingData = snapshot.val();
+
+    if (!existingData) {
+      return res.status(404).json({
+        success: false,
+        message: 'Institution limit not found'
+      });
+    }
+
+    const model = new InstitutionLimitModel(existingData);
+    model.updateLimit(0, req.user?.email || 'admin', 'Reset to default');
+
+    await limitRef.set(model.toJSON());
+
+    res.status(200).json({
+      success: true,
+      message: 'Limit reset to default',
+      data: model.toJSON()
+    });
+
+  } catch (error) {
+    console.error('❌ Error resetting limit:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reset institution limit',
+      error: error.message
+    });
+  }
+};
+
+// ============ GET LOCKED ENQUIRIES FOR INSTITUTION ============
+const getLockedEnquiries = async (req, res) => {
+  try {
+    const { institutionId } = req.params;
+
+    if (!institutionId) {
+      return res.status(400).json({ success: false, message: 'Institution ID is required' });
+    }
+
+    const enquiriesRef = db.ref('enquiries');
+    const snapshot = await enquiriesRef.once('value');
+    let enquiries = snapshot.val() || {};
+
+    let enquiriesArray = Object.values(enquiries)
+      .filter(e => e.institutionId === institutionId)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    const limitInfo = await getInstitutionLimitData(institutionId);
+    const lockedEnquiries = enquiriesArray.slice(limitInfo.totalLimit);
+
+    // Return only count and dates (no PII for locked ones)
+    const lockedSummary = lockedEnquiries.map(e => ({
+      id: e.id,
+      createdAt: e.createdAt,
+      status: e.status,
+      subject: e.subject  // just the subject for preview
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        lockedCount: lockedEnquiries.length,
+        lockedEnquiries: lockedSummary,
+        limit: limitInfo
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching locked enquiries:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch locked enquiries',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
+  // Enquiry functions
   submitEnquiry,
   getAllEnquiries,
   getParentEnquiries,
@@ -527,5 +748,12 @@ module.exports = {
   updateEnquiryStatus,
   addEnquiryResponse,
   getEnquiryStats,
-  deleteEnquiry
+  deleteEnquiry,
+  
+  // Institution limit functions 
+  setInstitutionLimit,
+  getInstitutionLimit,
+  getAllInstitutionLimits,
+  resetInstitutionLimit,
+  getLockedEnquiries,
 };

@@ -291,6 +291,20 @@ router.put('/admin/enquiries/:id/status',  verifyAuth,EnquiryController.updateEn
 router.post('/admin/enquiries/:id/response', verifyAdmin,verifyAuth, EnquiryController.addEnquiryResponse);
 router.delete('/admin/enquiries/:id', verifyAdmin,verifyAuth, EnquiryController.deleteEnquiry);
 
+// ============ INSTITUTION LIMIT ROUTES ============
+
+// Get limit for a specific institution (public - institution dashboard uses this)
+router.get('/institution/limits/:institutionId', EnquiryController.getInstitutionLimit);
+
+// Get locked enquiries for an institution (public)
+router.get('/institution/enquiries/:institutionId/locked', EnquiryController.getLockedEnquiries);
+
+// Admin routes for managing institution limits
+router.put('/admin/institution-limits/:institutionId', verifyAdmin, verifyAuth, EnquiryController.setInstitutionLimit);
+router.get('/admin/institution-limits', verifyAdmin, verifyAuth, EnquiryController.getAllInstitutionLimits);
+router.get('/admin/institution-limits/:institutionId', verifyAdmin, verifyAuth, EnquiryController.getInstitutionLimit);
+router.delete('/admin/institution-limits/:institutionId', verifyAdmin, verifyAuth, EnquiryController.resetInstitutionLimit);
+
 // Institution routes - Get enquiries for a specific institution
 router.get('/institution/enquiries/:institutionId', EnquiryController.getInstitutionEnquiries);
 
