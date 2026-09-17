@@ -14,6 +14,7 @@ const AdminRegistrationController = require('../Controllers/AdminRegController')
 const BestSellersController = require('../Controllers/BestSellers');
 const BookDemoController = require('../Controllers/BookaDemoController');
 const EnquiryController=require('../Controllers/EnquiryController')
+const PlansController=require('../Controllers/PlanController')
 
 const { db } = require('../firebaseAdmin'); 
 
@@ -307,5 +308,16 @@ router.delete('/admin/institution-limits/:institutionId', verifyAdmin, verifyAut
 
 // Institution routes - Get enquiries for a specific institution
 router.get('/institution/enquiries/:institutionId', EnquiryController.getInstitutionEnquiries);
+
+// Public - institutions fetch active plans
+router.get('/plans', PlansController.getAllPlans);
+router.get('/plans/:id', PlansController.getPlanById);
+
+// Admin - full management
+router.post('/admin/plans', verifyAdmin,  PlansController.createPlan);
+router.put('/admin/plans/:id', verifyAdmin,  PlansController.updatePlan);
+router.delete('/admin/plans/:id', verifyAdmin,  PlansController.deletePlan);
+router.patch('/admin/plans/:id/toggle-active', verifyAdmin, PlansController.togglePlanActive);
+router.post('/admin/plans/seed-defaults', verifyAdmin, PlansController.seedDefaultPlans);
 
 module.exports = router;
